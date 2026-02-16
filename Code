@@ -1,0 +1,199 @@
+#install.packages("nflreadr")
+library(nflreadr)
+library(dplyr)
+
+
+
+
+#REG SZN SR + RANKS
+pbp <- load_pbp(2000:2015)
+
+def_sr <- pbp %>%
+  filter(
+    play_type %in% c("run", "pass"),
+    !is.na(defteam),
+    !is.na(success)
+  ) %>%
+  group_by(season, defteam) %>%
+  summarise(
+    success_rate_allowed = mean(success),
+    plays = n(),
+    .groups = "drop"
+  )
+
+def_sr <- def_sr %>%
+  group_by(season) %>%
+  mutate(
+    sr_rank = rank(success_rate_allowed, ties.method = "min")
+  ) %>%
+  ungroup()
+
+
+
+
+
+#POST SZN SR
+pbp <- load_pbp(2000:2025)
+
+playoff_sr <- pbp %>%
+  filter(season_type == "POST")
+
+playoff_sr <- playoff_sr %>%
+  filter(
+    play_type %in% c("run", "pass"),
+    !is.na(defteam),
+    !is.na(success)
+  ) %>%
+  group_by(season, defteam) %>%
+  summarise(
+    success_rate_allowed = mean(success),
+    plays = n(),
+    .groups = "drop"
+  )
+
+
+
+
+
+#POST SZN EPA
+pbp <- load_pbp(2000:2025)
+
+playoff_epa <- pbp %>%
+  filter(season_type == "POST")
+
+playoff_epa <- playoff_epa %>%
+  filter(
+    play_type %in% c("run", "pass"),
+    !is.na(defteam),
+    !is.na(epa)
+  ) %>%
+  group_by(season, defteam) %>%
+  summarise(
+    epa_per_play = mean(epa),
+    plays = n(),
+    .groups = "drop"
+  )
+
+
+
+
+
+
+
+
+
+#LEAGUE MEANS
+pbp <- load_pbp(2000:2025)
+
+league_env <- pbp %>%
+  filter(play_type %in% c("run", "pass")) %>%
+  group_by(season) %>%
+  summarise(
+    lg_epa = mean(epa, na.rm = TRUE),          # EPA/play
+    lg_success = mean(success, na.rm = TRUE),
+    lg_ypp = mean(yards_gained, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+
+
+#EXCEL DATASHEET OF TOP DEFENSES' METRICS AS WELL AS REMAINING LEAGUE MEANS NEEDED
+Post.Season.SB.Defenses.Plus.Means <- read.csv("C:/Users/gavin/OneDrive/Desktop/Sport Models/Post Season SB Defenses Plus Means.csv")
+
+
+
+
+#TOP DEFENSES' METRICS RELATIVE TO LEAGUE MEANS
+playoff_adj <- Post.Season.SB.Defenses.Plus.Means %>%
+  left_join(league_env, by = "season")
+
+
+playoff_adj <- playoff_adj %>%
+  mutate(
+    rel_ppg = Points.Per.Game / lg_ppg,
+    rel_ypg = Yards.Per.Game / lg_ypg,
+    rel_ppp = Points.Per.Play / lg_ppp,
+    rel_ypp = Yards.Per.Play / lg_ypp,
+    rel_1dpg = X1st.Downs.Per.Game / lg_1dpg,
+    rel_sc = Score.. / lg_sc.,
+    rel_sr  = Success.Rate / lg_success,
+    rel_ppd = Points.Per.Drive / lg_ppd,
+  )
+
+
+
+playoff_adj <- playoff_adj %>%
+  mutate(
+    rel_to = lg_to. / Turnover..
+  )
+
+
+
+playoff_adj <- playoff_adj %>%
+  mutate(
+    epa_diff = Expected.Points..EPA. - lg_epa
+  )
+
+
+
+
+#0-5 SCORE BASED ON RELATIVE SCORES
+score_metric <- function(x) {
+  case_when(
+    x <= 0.75 ~ 5,
+    x <= 0.85 ~ 4,
+    x <= 0.95 ~ 3,
+    x <= 1.05 ~ 2,
+    x <= 1.15 ~ 1,
+    x > 1.15 ~ 0
+  )
+}
+
+
+
+
+#0-5 SCORE BASED ON EPA DIFFERENTIAL
+score_epa <- function(x) {
+  case_when(
+    x <= -0.15 ~ 5,
+    x <= -0.08 ~ 4,
+    x <= -0.02 ~ 3,
+    x <=  0.04 ~ 2,
+    x <=  0.10 ~ 1,
+    TRUE ~ 0
+  )
+}
+
+
+
+
+#FINDING EACH TEAMS' SCORE FOR EACH PLAYOFF METRIC
+playoff_adj <- playoff_adj %>%
+  mutate(
+    ppg_score = score_metric(rel_ppg),
+    ypg_score = score_metric(rel_ypg),
+    ppp_score = score_metric(rel_ppp),
+    ypp_score = score_metric(rel_ypp),
+    firstdpg_score = score_metric(rel_1dpg),
+    sc_score = score_metric(rel_sc),
+    to_score  = score_metric(rel_to),
+    sr_score  = score_metric(rel_sr),
+    ppd_score  = score_metric(rel_ppd),
+  )
+
+
+playoff_adj <- playoff_adj %>%
+  mutate(epa_score = score_epa(epa_diff))
+
+
+playoff_adj
+
+
+
+
+
+
+
+
+
